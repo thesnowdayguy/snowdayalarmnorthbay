@@ -104,14 +104,16 @@
             font-weight: bold;
             animation: pulse 1s infinite;
         }
-        .web-viewer {
-            width: 100%;
-            height: 200px;
-            border: 1px solid rgba(255,255,255,0.3);
+        .result-box {
+            background: rgba(255,255,255,0.2);
+            padding: 15px;
             border-radius: 10px;
-            margin: 10px 0;
-            background: rgba(0,0,0,0.2);
+            margin: 15px 0;
+            font-size: 14px;
+            line-height: 1.4;
         }
+        .result-snowday { background: rgba(255,0,0,0.3); border: 1px solid #ff4444; }
+        .result-normal { background: rgba(0,255,0,0.3); border: 1px solid #44ff44; }
     </style>
 </head>
 <body>
@@ -366,8 +368,8 @@
             }, 3000);
         }
 
-        async function checkSnowDay() {
-            console.log('Checking snow day status...');
+        async function manualCheck() {
+            console.log('Manual check initiated...');
             updateStatus('Checking snow day status...', 'checking');
             
             try {
@@ -378,24 +380,55 @@
                 const response = await fetch(proxyUrl + targetUrl);
                 const html = await response.text();
                 
-                // Check for both system-wide and bus-specific cancellations
-                isSnowDay = checkCancellationConditions(html);
+                // Check cancellation conditions
+                const isCancelled = checkCancellationConditions(html);
                 const now = new Date().toLocaleTimeString();
                 
-                if (isSnowDay) {
-                    updateStatus('❄️ SNOW DAY DETECTED! Alarm will be cancelled', 'snowday');
-                    document.title = '❄️ Snow Day!';
+                // Create detailed result display
+                let resultHTML = '';
+                if (isCancelled) {
+                    resultHTML = `
+                        <div class="result-box result-snowday">
+                            <strong>❄️ SNOW DAY DETECTED!</strong><br>
+                            ${busNumber ? `Your bus #${busNumber} is cancelled OR ` : ''}
+                            North Bay buses are cancelled.<br>
+                            <strong>Your alarm will NOT ring.</strong>
+                        </div>
+                    `;
+                    updateStatus('❄️ SNOW DAY DETECTED!', 'snowday');
                 } else {
-                    updateStatus('🚌 Buses running normally - alarm will ring', 'normal');
-                    document.title = 'Snow Day Alarm';
+                    resultHTML = `
+                        <div class="result-box result-normal">
+                            <strong>🚌 BUSES RUNNING!</strong><br>
+                            ${busNumber ? `Your bus #${busNumber} is running and ` : ''}
+                            North Bay system is normal.<br>
+                            <strong>Your alarm WILL ring.</strong>
+                        </div>
+                    `;
+                    updateStatus('🚌 Buses running normally', 'normal');
                 }
                 
-                document.getElementById('lastCheck').textContent = `Last check: ${now}`;
+                // Add result to status area
+                const statusDiv = document.getElementById('status');
+                statusDiv.innerHTML = resultHTML + `<div class="last-check">Last check: ${now}</div>`;
+                
+                // Also update title
+                document.title = isCancelled ? '❄️ Snow Day!' : 'Snow Day Alarm';
                 
             } catch (error) {
-                console.error('Check failed:', error);
-                updateStatus('❌ Check failed - alarm will ring as backup', 'normal');
-                isSnowDay = false; // Default to normal day if check fails
+                console.error('Manual check failed:', error);
+                updateStatus('❌ Check failed - assuming normal conditions', 'normal');
+                
+                // Show error result
+                const statusDiv = document.getElementById('status');
+                statusDiv.innerHTML = `
+                    <div class="result-box result-normal">
+                        <strong>❌ Check Failed</strong><br>
+                        Could not reach website - assuming normal conditions.<br>
+                        <strong>Your alarm WILL ring as backup.</strong>
+                    </div>
+                    <div class="last-check">Last check: ${new Date().toLocaleTimeString()}</div>
+                `;
             }
         }
 
@@ -422,8 +455,10 @@
             return systemCancelled || busCancelled;
         }
 
-        function manualCheck() {
-            checkSnowDay();
+        function updateStatus(message, type) {
+            const status = document.getElementById('status');
+            status.className = 'status ' + type;
+            status.innerHTML = message + '<div class="last-check" id="lastCheck"></div>';
         }
 
         function initAudio() {
