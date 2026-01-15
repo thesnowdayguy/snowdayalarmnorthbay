@@ -1,38 +1,41 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>North Bay Snow Day Alarm</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 500px;
-            margin: 50px auto;
-            padding: 20px;
+        body { 
+            font-family: Arial; 
+            text-align: center; 
+            padding: 20px; 
+            max-width: 500px; 
+            margin: 0 auto;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            text-align: center;
+            transition: background 0.5s;
         }
         .container {
             background: rgba(255,255,255,0.1);
             padding: 30px;
             border-radius: 15px;
             backdrop-filter: blur(10px);
+            margin: 20px;
         }
-        h1 { color: #fff; margin-bottom: 30px; }
+        h1 { font-size: 28px; margin-bottom: 20px; }
         .time-input {
             font-size: 24px;
             padding: 10px;
             border-radius: 10px;
             border: none;
-            margin: 20px;
+            margin: 10px;
             background: rgba(255,255,255,0.9);
             color: #333;
         }
         button {
             font-size: 18px;
             padding: 15px 30px;
+            margin: 10px;
             border: none;
             border-radius: 25px;
             background: #4CAF50;
@@ -40,25 +43,38 @@
             cursor: pointer;
             transition: all 0.3s;
         }
-        button:hover { background: #45a049; transform: scale(1.05); }
+        button:hover { transform: scale(1.05); }
         button.cancel { background: #f44336; }
-        button.cancel:hover { background: #da190b; }
-        .status {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 10px;
+        .alarm-active {
+            background: #ff4444 !important;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        .ringing-mode {
+            background: linear-gradient(45deg, #ff0000, #ff6600) !important;
+            animation: emergency 0.5s infinite;
+        }
+        @keyframes emergency {
+            0%, 100% { background: linear-gradient(45deg, #ff0000, #ff6600); }
+            50% { background: linear-gradient(45deg, #ff6600, #ffff00); }
+        }
+        .status { margin-top: 20px; padding: 15px; border-radius: 10px; }
+        .hidden { display: none; }
+        .alarm-controls {
             background: rgba(255,255,255,0.2);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
         }
-        .snowday { background: rgba(255,0,0,0.3); }
-        .normal { background: rgba(0,255,0,0.3); }
-        .manual-check {
-            background: #2196F3;
-            margin-top: 20px;
-        }
-        .last-check {
-            font-size: 12px;
-            opacity: 0.8;
-            margin-top: 10px;
+        #stopAlarm {
+            background: #ff0000;
+            font-size: 24px;
+            padding: 20px 40px;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -74,25 +90,42 @@
         <button id="setButton" onclick="toggleAlarm()">Set Alarm</button>
         
         <div id="status" class="status">
-            Ready - Click "Check Now" to test
+            Ready to set alarm
         </div>
         
-        <button class="manual-check" onclick="manualCheck()">Check Now</button>
+        <div id="alarmControls" class="alarm-controls hidden">
+            <h2>🚨 ALARM RINGING! 🚨</h2>
+            <button id="stopAlarm" onclick="stopAlarm()">STOP ALARM</button>
+            <p id="alarmReason">Wake up!</p>
+        </div>
         
-        <div id="lastCheck" class="last-check"></div>
+        <button class="manual-check" onclick="manualCheck()" style="background: #2196F3; margin-top: 20px;">
+            Check Snow Day Status Now
+        </button>
+        
+        <div id="lastCheck" style="font-size: 12px; opacity: 0.8; margin-top: 10px;"></div>
     </div>
 
     <script>
         let alarmSet = false;
         let alarmTime = '07:00';
+        let alarmTimeout = null;
+        let snowDayCheckInterval = null;
+        let isSnowDay = false;
         
-        // Check on page load
-        window.onload = function() {
-            checkSnowDay(); // Initial check
-            setInterval(checkSnowDay, 300000); // Check every 5 minutes
-        };
-        
+        // Audio context for alarm sound
+        let audioContext = null;
+        let oscillator = null;
+        let gainNode = null;
+
+        // Initialize audio
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
         function toggleAlarm() {
+            if (!audioContext) initAudio();
+            
             alarmSet = !alarmSet;
             const button = document.getElementById('setButton');
             const timeInput = document.getElementById('alarmTime');
@@ -100,97 +133,161 @@
             if (alarmSet) {
                 alarmTime = timeInput.value;
                 button.textContent = 'Cancel Alarm';
-                button.className = 'cancel';
+                button.className = 'cancel alarm-active';
                 timeInput.disabled = true;
-                updateStatus('Alarm set for ' + alarmTime, 'normal');
-                scheduleChecks();
+                scheduleAlarm();
+                updateStatus('Alarm set for ' + alarmTime + ' - will check for snow day first');
             } else {
                 button.textContent = 'Set Alarm';
                 button.className = '';
                 timeInput.disabled = false;
-                updateStatus('Alarm cancelled', 'normal');
+                clearTimeout(alarmTimeout);
+                clearInterval(snowDayCheckInterval);
+                updateStatus('Alarm cancelled');
+                document.body.className = '';
             }
         }
-        
-        function scheduleChecks() {
-            // Schedule checks (this is simplified - real version would use service worker)
-            setTimeout(() => {
-                checkSnowDay(); // Primary check
-            }, getTimeUntil('05:45'));
+
+        function scheduleAlarm() {
+            // Schedule snow day checks every 5 minutes
+            checkSnowDay(); // Check immediately
+            snowDayCheckInterval = setInterval(checkSnowDay, 300000); // Every 5 minutes
             
-            setTimeout(() => {
-                checkSnowDay(); // Fail-safe check
-            }, getTimeUntil(getFailSafeTime()));
-        }
-        
-        function getTimeUntil(targetTime) {
+            // Calculate time until alarm
             const now = new Date();
-            const [hours, minutes] = targetTime.split(':');
-            const target = new Date();
-            target.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+            const [hours, minutes] = alarmTime.split(':');
+            const alarmDateTime = new Date();
+            alarmDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
             
-            if (target < now) target.setDate(target.getDate() + 1);
-            return target - now;
-        }
-        
-        function getFailSafeTime() {
-            const [alarmHours, alarmMinutes] = alarmTime.split(':');
-            let hours = parseInt(alarmHours);
-            let minutes = parseInt(alarmMinutes) - 30;
-            
-            if (minutes < 0) {
-                minutes += 60;
-                hours -= 1;
+            if (alarmDateTime < now) {
+                alarmDateTime.setDate(alarmDateTime.getDate() + 1); // Tomorrow
             }
             
-            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            const timeUntilAlarm = alarmDateTime - now;
+            
+            // Schedule alarm
+            alarmTimeout = setTimeout(() => {
+                triggerAlarm();
+            }, timeUntilAlarm);
+            
+            console.log(`Alarm scheduled for ${alarmDateTime} (${Math.round(timeUntilAlarm/60000)} minutes)`);
         }
-        
+
+        function triggerAlarm() {
+            // Check snow day status first
+            if (isSnowDay) {
+                updateStatus('❄️ SNOW DAY! Alarm cancelled - go back to sleep!', 'snowday');
+                playSound('cancelled');
+                document.body.className = 'ringing-mode';
+                setTimeout(() => {
+                    document.body.className = '';
+                }, 3000);
+            } else {
+                // Normal day - ring the alarm!
+                updateStatus('🚨 ALARM RINGING! Wake up!', 'normal');
+                document.getElementById('alarmReason').textContent = 'Time to wake up! Buses are running.';
+                document.getElementById('alarmControls').classList.remove('hidden');
+                document.body.className = 'ringing-mode';
+                playSound('alarm');
+                
+                // Keep ringing until stopped
+                keepRinging = true;
+                continuousAlarm();
+            }
+        }
+
+        let keepRinging = false;
+        function continuousAlarm() {
+            if (keepRinging) {
+                playSound('alarm');
+                setTimeout(continuousAlarm, 2000); // Ring every 2 seconds
+            }
+        }
+
+        function stopAlarm() {
+            keepRinging = false;
+            if (oscillator) {
+                oscillator.stop();
+                oscillator = null;
+            }
+            document.getElementById('alarmControls').classList.add('hidden');
+            document.body.className = '';
+            updateStatus('Alarm stopped - good morning! 🌅');
+            
+            // Reset for tomorrow
+            setTimeout(() => {
+                if (alarmSet) {
+                    scheduleAlarm();
+                }
+            }, 5000);
+        }
+
+        function playSound(type) {
+            if (!audioContext) return;
+            
+            // Stop previous sound
+            if (oscillator) {
+                oscillator.stop();
+            }
+            
+            oscillator = audioContext.createOscillator();
+            gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            if (type === 'alarm') {
+                oscillator.frequency.value = 800; // Annoying high pitch
+                gainNode.gain.value = 0.3;
+                oscillator.type = 'square'; // Harsh sound
+            } else if (type === 'cancelled') {
+                oscillator.frequency.value = 400; // Gentle low tone
+                gainNode.gain.value = 0.2;
+                oscillator.type = 'sine';
+            }
+            
+            oscillator.start();
+            
+            if (type === 'cancelled') {
+                // Fade out for cancelled
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 2);
+                oscillator.stop(audioContext.currentTime + 2);
+            }
+        }
+
         async function checkSnowDay() {
             try {
-                // Use CORS proxy to bypass restrictions
+                updateStatus('Checking snow day status...');
+                
+                // Use CORS proxy
                 const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
                 const targetUrl = 'https://npssts.ca/index.php/delays-cancellations';
-                
-                updateStatus('Checking...', 'normal');
                 
                 const response = await fetch(proxyUrl + targetUrl);
                 const html = await response.text();
                 
-                const isCancelled = isValidSnowDay(html);
+                isSnowDay = isValidSnowDay(html);
                 const now = new Date().toLocaleTimeString();
                 
-                if (isCancelled) {
-                    updateStatus('❄️ SNOW DAY! North Bay buses cancelled', 'snowday');
-                    document.title = '❄️ SNOW DAY!';
-                    
-                    // Play sound
-                    playSound('snowday');
-                    
-                    // Send browser notification
-                    if (Notification.permission === 'granted') {
-                        new Notification('❄️ Snow Day!', {
-                            body: 'North Bay buses cancelled! Alarm won\'t ring.',
-                            icon: '❄️'
-                        });
-                    }
+                if (isSnowDay) {
+                    updateStatus('❄️ SNOW DAY DETECTED! Alarm will be cancelled', 'snowday');
+                    document.title = '❄️ Snow Day!';
                 } else {
-                    updateStatus('🚌 Buses running normally', 'normal');
+                    updateStatus('🚌 Buses running normally - alarm will ring', 'normal');
                     document.title = 'Snow Day Alarm';
                 }
                 
                 document.getElementById('lastCheck').textContent = `Last check: ${now}`;
                 
             } catch (error) {
-                updateStatus('❌ Check failed - will retry', 'snowday');
+                updateStatus('❌ Check failed - alarm will ring as backup', 'normal');
+                isSnowDay = false; // Default to normal day if check fails
                 console.error('Check failed:', error);
             }
         }
-        
+
         function isValidSnowDay(html) {
             const text = html.toLowerCase();
-            
-            // ONLY full North Bay or system-wide cancellations
             return (text.includes('north bay') && 
                    (text.includes('all buses cancelled') || 
                     text.includes('buses cancelled') || 
@@ -198,41 +295,24 @@
                    (text.includes('all zones') && text.includes('buses cancelled')) ||
                    (text.includes('system-wide') && text.includes('buses cancelled'));
         }
-        
+
+        function updateStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + (type === 'snowday' ? 'alarm-cancelled' : 'normal');
+        }
+
         function manualCheck() {
             checkSnowDay();
         }
+
+        // Auto-check every 5 minutes
+        setInterval(checkSnowDay, 300000);
         
-        function updateStatus(message, className) {
-            const status = document.getElementById('status');
-            status.textContent = message;
-            status.className = 'status ' + className;
-        }
-        
-        function playSound(type) {
-            // Create audio context for beep
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            
-            if (type === 'snowday') {
-                oscillator.frequency.value = 800; // Higher pitch for snow day
-            } else {
-                oscillator.frequency.value = 400; // Lower pitch for normal
-            }
-            
-            oscillator.start();
-            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-            oscillator.stop(audioContext.currentTime + 0.5);
-        }
-        
-        // Request notification permission
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
-        }
+        // Check immediately on load
+        window.onload = function() {
+            checkSnowDay();
+        };
     </script>
 </body>
 </html>
