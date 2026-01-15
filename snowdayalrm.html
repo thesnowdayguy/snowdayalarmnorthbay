@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>North Bay Snow Day Alarm</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 500px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-align: center;
+        }
+        .container {
+            background: rgba(255,255,255,0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        h1 { color: #fff; margin-bottom: 30px; }
+        .time-input {
+            font-size: 24px;
+            padding: 10px;
+            border-radius: 10px;
+            border: none;
+            margin: 20px;
+            background: rgba(255,255,255,0.9);
+            color: #333;
+        }
+        button {
+            font-size: 18px;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 25px;
+            background: #4CAF50;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        button:hover { background: #45a049; transform: scale(1.05); }
+        button.cancel { background: #f44336; }
+        button.cancel:hover { background: #da190b; }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.2);
+        }
+        .snowday { background: rgba(255,0,0,0.3); }
+        .normal { background: rgba(0,255,0,0.3); }
+        .manual-check {
+            background: #2196F3;
+            margin-top: 20px;
+        }
+        .last-check {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌨️ North Bay Snow Day Alarm</h1>
+        
+        <div>
+            <label for="alarmTime">Set Alarm Time:</label><br>
+            <input type="time" id="alarmTime" class="time-input" value="07:00">
+        </div>
+        
+        <button id="setButton" onclick="toggleAlarm()">Set Alarm</button>
+        
+        <div id="status" class="status">
+            Ready - Click "Check Now" to test
+        </div>
+        
+        <button class="manual-check" onclick="manualCheck()">Check Now</button>
+        
+        <div id="lastCheck" class="last-check"></div>
+    </div>
+
+    <script>
+        let alarmSet = false;
+        let alarmTime = '07:00';
+        
+        // Check on page load
+        window.onload = function() {
+            checkSnowDay(); // Initial check
+            setInterval(checkSnowDay, 300000); // Check every 5 minutes
+        };
+        
+        function toggleAlarm() {
+            alarmSet = !alarmSet;
+            const button = document.getElementById('setButton');
+            const timeInput = document.getElementById('alarmTime');
+            
+            if (alarmSet) {
+                alarmTime = timeInput.value;
+                button.textContent = 'Cancel Alarm';
+                button.className = 'cancel';
+                timeInput.disabled = true;
+                updateStatus('Alarm set for ' + alarmTime, 'normal');
+                scheduleChecks();
+            } else {
+                button.textContent = 'Set Alarm';
+                button.className = '';
+                timeInput.disabled = false;
+                updateStatus('Alarm cancelled', 'normal');
+            }
+        }
+        
+        function scheduleChecks() {
+            // Schedule checks (this is simplified - real version would use service worker)
+            setTimeout(() => {
+                checkSnowDay(); // Primary check
+            }, getTimeUntil('05:45'));
+            
+            setTimeout(() => {
+                checkSnowDay(); // Fail-safe check
+            }, getTimeUntil(getFailSafeTime()));
+        }
+        
+        function getTimeUntil(targetTime) {
+            const now = new Date();
+            const [hours, minutes] = targetTime.split(':');
+            const target = new Date();
+            target.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+            
+            if (target < now) target.setDate(target.getDate() + 1);
+            return target - now;
+        }
+        
+        function getFailSafeTime() {
+            const [alarmHours, alarmMinutes] = alarmTime.split(':');
+            let hours = parseInt(alarmHours);
+            let minutes = parseInt(alarmMinutes) - 30;
+            
+            if (minutes < 0) {
+                minutes += 60;
+                hours -= 1;
+            }
+            
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+        }
+        
+        async function checkSnowDay() {
+            try {
+                // Use CORS proxy to bypass restrictions
+                const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+                const targetUrl = 'https://npssts.ca/index.php/delays-cancellations';
+                
+                updateStatus('Checking...', 'normal');
+                
+                const response = await fetch(proxyUrl + targetUrl);
+                const html = await response.text();
+                
+                const isCancelled = isValidSnowDay(html);
+                const now = new Date().toLocaleTimeString();
+                
+                if (isCancelled) {
+                    updateStatus('❄️ SNOW DAY! North Bay buses cancelled', 'snowday');
+                    document.title = '❄️ SNOW DAY!';
+                    
+                    // Play sound
+                    playSound('snowday');
+                    
+                    // Send browser notification
+                    if (Notification.permission === 'granted') {
+                        new Notification('❄️ Snow Day!', {
+                            body: 'North Bay buses cancelled! Alarm won\'t ring.',
+                            icon: '❄️'
+                        });
+                    }
+                } else {
+                    updateStatus('🚌 Buses running normally', 'normal');
+                    document.title = 'Snow Day Alarm';
+                }
+                
+                document.getElementById('lastCheck').textContent = `Last check: ${now}`;
+                
+            } catch (error) {
+                updateStatus('❌ Check failed - will retry', 'snowday');
+                console.error('Check failed:', error);
+            }
+        }
+        
+        function isValidSnowDay(html) {
+            const text = html.toLowerCase();
+            
+            // ONLY full North Bay or system-wide cancellations
+            return (text.includes('north bay') && 
+                   (text.includes('all buses cancelled') || 
+                    text.includes('buses cancelled') || 
+                    text.includes('transportation cancelled'))) ||
+                   (text.includes('all zones') && text.includes('buses cancelled')) ||
+                   (text.includes('system-wide') && text.includes('buses cancelled'));
+        }
+        
+        function manualCheck() {
+            checkSnowDay();
+        }
+        
+        function updateStatus(message, className) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + className;
+        }
+        
+        function playSound(type) {
+            // Create audio context for beep
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            if (type === 'snowday') {
+                oscillator.frequency.value = 800; // Higher pitch for snow day
+            } else {
+                oscillator.frequency.value = 400; // Lower pitch for normal
+            }
+            
+            oscillator.start();
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+            oscillator.stop(audioContext.currentTime + 0.5);
+        }
+        
+        // Request notification permission
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+    </script>
+</body>
+</html>
