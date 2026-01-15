@@ -3,10 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>North Bay Snow Day Alarm - Maximum Fail-Safe</title>
+    <title>North Bay Snow Day Alarm</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
-    <meta name="apple-mobile-web-app-title" content="Snow Day Alarm">
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
@@ -28,12 +26,12 @@
         }
         h1 { font-size: 28px; margin-bottom: 10px; }
         .subtitle { font-size: 14px; opacity: 0.8; margin-bottom: 30px; }
-        .time-input {
-            font-size: 24px;
-            padding: 15px;
-            border-radius: 15px;
+        .time-input, .bus-input {
+            font-size: 18px;
+            padding: 12px;
+            border-radius: 10px;
             border: none;
-            margin: 20px 0;
+            margin: 10px 0;
             background: rgba(255,255,255,0.9);
             color: #333;
             width: 200px;
@@ -52,7 +50,6 @@
         }
         button:hover { transform: scale(1.05); }
         button.cancel { background: #f44336; }
-        button:active { transform: scale(0.95); }
         .status {
             margin-top: 20px;
             padding: 15px;
@@ -66,7 +63,6 @@
         .status.snowday { background: rgba(255,0,0,0.3); }
         .status.normal { background: rgba(0,255,0,0.3); }
         .status.checking { background: rgba(255,255,255,0.2); }
-        .status.warning { background: rgba(255,165,0,0.3); }
         .alarm-controls {
             background: rgba(255,0,0,0.3);
             padding: 20px;
@@ -76,11 +72,12 @@
         }
         .alarm-active {
             background: linear-gradient(45deg, #ff0000, #ff6600) !important;
-            animation: emergency 0.5s infinite;
+            animation: pulse 1s infinite;
         }
-        @keyframes emergency {
-            0%, 100% { background: linear-gradient(45deg, #ff0000, #ff6600); }
-            50% { background: linear-gradient(45deg, #ff6600, #ffff00); }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
         }
         .hidden { display: none; }
         .last-check { font-size: 12px; opacity: 0.7; margin-top: 10px; }
@@ -92,21 +89,13 @@
             margin: 10px 0;
             font-size: 13px;
         }
-        .success-box {
-            background: rgba(0,255,0,0.2);
-            border: 1px solid #00ff00;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
-            font-size: 12px;
+        .bus-number-section {
+            margin: 20px 0;
         }
-        .fail-safe-box {
-            background: rgba(255,255,255,0.2);
-            border: 1px solid rgba(255,255,255,0.5);
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
-            font-size: 11px;
+        .bus-number-display {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-top: 5px;
         }
         #stopAlarm {
             background: #ff0000;
@@ -115,35 +104,30 @@
             font-weight: bold;
             animation: pulse 1s infinite;
         }
-        .continuous-audio {
-            position: absolute;
-            left: -9999px;
-        }
-        .permissions-needed {
-            background: rgba(255,165,0,0.3);
-            border: 1px solid #ffa500;
-            padding: 15px;
+        .web-viewer {
+            width: 100%;
+            height: 200px;
+            border: 1px solid rgba(255,255,255,0.3);
             border-radius: 10px;
             margin: 10px 0;
-        }
-        .power-save-mode {
-            background: rgba(100,100,255,0.3);
-            border: 1px solid #6464ff;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
-            font-size: 11px;
+            background: rgba(0,0,0,0.2);
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🌨️ North Bay Snow Day Alarm</h1>
-        <div class="subtitle">Maximum fail-safe version - tries everything to wake you up!</div>
+        <div class="subtitle">Alarm won't ring if it's a snow day or your bus is cancelled</div>
         
         <div>
             <label for="alarmTime">Set Alarm Time:</label><br>
             <input type="time" id="alarmTime" class="time-input" value="07:00">
+        </div>
+        
+        <div class="bus-number-section">
+            <label for="busNumber">Your Bus Number (optional):</label><br>
+            <input type="text" id="busNumber" class="bus-input" placeholder="e.g., 123 or leave blank">
+            <div class="bus-number-display" id="busNumberDisplay"></div>
         </div>
         
         <button id="setButton" onclick="toggleAlarm()">Set Alarm</button>
@@ -164,26 +148,16 @@
         
         <div id="lastCheck" class="last-check"></div>
         
-        <div id="warningBox" class="warning-box">
-            ⚠️ iOS: Add to Home Screen • Keep Safari open • Keep phone plugged in • Keep volume up<br>
-            ⚠️ Android: Keep Chrome open • Disable battery saver • Allow background audio
+        <div class="warning-box">
+            ⚠️ Keep this page open overnight • Keep phone plugged in • Keep volume up
         </div>
         
-        <div id="failSafeBox" class="fail-safe-box">
-            🔧 Fail-safes active: Continuous audio check • Multiple sound methods • Vibration backup • Visual alerts
-        </div>
-        
-        <!-- Hidden audio elements for various methods -->
-        <audio id="alarmSound" loop preload="auto" class="continuous-audio">
+        <!-- Audio elements -->
+        <audio id="alarmSound" loop preload="auto">
             <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmFgU7k9n1unEiBC13yO/eizEIHWq+8+OWT" type="audio/wav">
         </audio>
         
-        <audio id="cancelledSound" preload="auto" class="continuous-audio">
-            <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmFgU7k9n1unEiBC13yO/eizEIHWq+8+OWT" type="audio/wav">
-        </audio>
-        
-        <!-- Silent continuous audio to keep audio context alive -->
-        <audio id="silentAudio" loop preload="auto" class="continuous-audio">
+        <audio id="cancelledSound" preload="auto">
             <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmFgU7k9n1unEiBC13yO/eizEIHWq+8+OWT" type="audio/wav">
         </audio>
     </div>
@@ -191,349 +165,161 @@
     <script>
         let alarmSet = false;
         let alarmTime = '';
+        let busNumber = '';
         let alarmTimeout = null;
         let checkInterval = null;
         let isSnowDay = false;
         let audioContext = null;
         let oscillator = null;
         let keepRinging = false;
-        let continuousCheckInterval = null;
-        let silentAudioInterval = null;
-        let wakeLock = null;
-        let visibilityCheckInterval = null;
-
-        // Initialize on first user interaction
-        function initAudio() {
-            if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                
-                // Start silent audio to keep context alive
-                startSilentAudio();
-                
-                // Request wake lock if available
-                requestWakeLock();
-            }
-        }
-
-        function startSilentAudio() {
-            // Play silent audio continuously to keep audio context alive
-            const silentAudio = document.getElementById('silentAudio');
-            silentAudio.volume = 0.001; // Nearly silent
-            silentAudio.play().catch(e => console.log('Silent audio failed:', e));
-            
-            // Restart every 30 seconds to prevent iOS from stopping it
-            silentAudioInterval = setInterval(() => {
-                silentAudio.currentTime = 0;
-                silentAudio.play().catch(e => console.log('Silent audio restart failed:', e));
-            }, 30000);
-        }
-
-        function requestWakeLock() {
-            // Try to prevent screen sleep (works on some browsers)
-            if ('wakeLock' in navigator) {
-                navigator.wakeLock.request('screen').then(lock => {
-                    wakeLock = lock;
-                    console.log('Wake lock acquired');
-                }).catch(e => console.log('Wake lock failed:', e));
-            }
-            
-            // Fallback: prevent sleep with fake movement
-            setInterval(() => {
-                window.dispatchEvent(new Event('mousemove'));
-            }, 30000);
-        }
 
         function toggleAlarm() {
-            initAudio();
+            if (!audioContext) initAudio();
             
             alarmSet = !alarmSet;
             const button = document.getElementById('setButton');
             const timeInput = document.getElementById('alarmTime');
+            const busInput = document.getElementById('busNumber');
             
             if (alarmSet) {
                 alarmTime = timeInput.value;
+                busNumber = busInput.value.trim();
                 button.textContent = 'Cancel Alarm';
                 button.className = 'cancel alarm-active';
                 timeInput.disabled = true;
-                document.getElementById('warningBox').className = 'success-box';
-                document.getElementById('warningBox').innerHTML = '✅ Alarm active! Starting continuous audio + background checks.';
-                document.getElementById('failSafeBox').style.display = 'block';
-                scheduleAlarm();
-                updateStatus('Alarm set for ' + alarmTime + ' - starting background checks...', 'normal');
+                busInput.disabled = true;
                 
-                // Start continuous monitoring
-                startContinuousMonitoring();
+                // Update bus number display
+                const busDisplay = document.getElementById('busNumberDisplay');
+                if (busNumber) {
+                    busDisplay.textContent = `Monitoring bus #${busNumber} and North Bay cancellations`;
+                } else {
+                    busDisplay.textContent = 'Monitoring North Bay system-wide cancellations';
+                }
+                
+                scheduleAlarm();
+                updateStatus('Alarm set for ' + alarmTime + ' - checking for snow day...', 'normal');
             } else {
                 button.textContent = 'Set Alarm';
                 button.className = '';
                 timeInput.disabled = false;
+                busInput.disabled = false;
+                document.getElementById('busNumberDisplay').textContent = '';
                 clearTimeout(alarmTimeout);
                 clearInterval(checkInterval);
-                clearInterval(continuousCheckInterval);
-                clearInterval(silentAudioInterval);
                 stopAlarm();
-                document.getElementById('warningBox').className = 'warning-box';
-                document.getElementById('warningBox').innerHTML = '⚠️ iOS: Add to Home Screen • Keep Safari open • Keep phone plugged in • Keep volume up';
-                document.getElementById('failSafeBox').style.display = 'none';
                 updateStatus('Alarm cancelled', 'normal');
-                
-                // Release wake lock
-                if (wakeLock) {
-                    wakeLock.release();
-                    wakeLock = null;
-                }
-            }
-        }
-
-        function startContinuousMonitoring() {
-            // Multiple monitoring methods
-            
-            // Method 1: Check every minute
-            continuousCheckInterval = setInterval(() => {
-                checkSnowDay();
-                keepAudioAlive();
-            }, 60000);
-            
-            // Method 2: Check every 30 seconds (more frequent)
-            setInterval(() => {
-                const now = new Date();
-                const currentTime = now.getHours().toString().padStart(2, '0') + ':' + 
-                                  now.getMinutes().toString().padStart(2, '0');
-                
-                // Check if we're close to alarm time (within 5 minutes)
-                const alarmDate = new Date();
-                const [alarmHours, alarmMinutes] = alarmTime.split(':');
-                alarmDate.setHours(parseInt(alarmHours), parseInt(alarmMinutes), 0, 0);
-                
-                const timeDiff = Math.abs(alarmDate - now);
-                if (timeDiff < 5 * 60 * 1000) { // Within 5 minutes
-                    console.log('Close to alarm time - extra check');
-                    checkSnowDay();
-                }
-                
-                if (currentTime === alarmTime) {
-                    console.log('Alarm time reached!');
-                    triggerAlarm();
-                }
-            }, 30000);
-            
-            // Method 3: Keep audio alive with periodic sounds
-            setInterval(keepAudioAlive, 10000);
-        }
-
-        function keepAudioAlive() {
-            // Play tiny blip to keep audio context active
-            if (audioContext) {
-                const oscillator = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
-                oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-                oscillator.frequency.value = 100; // Very low frequency
-                gainNode.gain.value = 0.001; // Nearly silent
-                oscillator.start();
-                oscillator.stop(audioContext.currentTime + 0.01);
-            }
-            
-            // Also try to keep HTML5 audio alive
-            const silentAudio = document.getElementById('silentAudio');
-            if (silentAudio.paused) {
-                silentAudio.play().catch(e => console.log('Keep alive audio failed:', e));
             }
         }
 
         function scheduleAlarm() {
-            // Primary check every minute
+            // Check every minute for alarm time
             checkInterval = setInterval(() => {
                 const now = new Date();
                 const currentTime = now.getHours().toString().padStart(2, '0') + ':' + 
                                   now.getMinutes().toString().padStart(2, '0');
                 
                 if (currentTime === alarmTime) {
-                    console.log('Primary alarm trigger!');
+                    console.log('Alarm time reached - checking conditions...');
                     triggerAlarm();
                 }
             }, 60000);
             
-            // Also check immediately
+            // Initial check
             checkSnowDay();
         }
 
         async function triggerAlarm() {
-            console.log('Triggering alarm with maximum fail-safes!');
-            updateStatus('🚨 TRIGGERING ALARM WITH ALL METHODS!', 'checking');
+            console.log('Triggering alarm check...');
+            updateStatus('Checking conditions before alarm...', 'checking');
             
             // Check snow day first
             await checkSnowDay();
             
             if (isSnowDay) {
-                // Snow day - gentle notification only
-                console.log('Snow day - cancelling all alarms');
-                updateStatus('❄️ SNOW DAY! All alarms cancelled', 'snowday');
-                document.title = '❄️ Snow Day!';
+                // Snow day - gentle notification, no alarm
+                console.log('Conditions met for cancellation - not ringing alarm');
+                updateStatus('❄️ CONDITIONS MET! Alarm not ringing', 'snowday');
+                document.title = '❄️ No Alarm!';
                 playCancelledSound();
                 document.body.className = 'normal';
                 
                 // Show notification but don't ring
                 if ('Notification' in window && Notification.permission === 'granted') {
-                    new Notification('❄️ Snow Day!', {
-                        body: 'North Bay buses cancelled. All alarms cancelled!',
+                    new Notification('❄️ No Alarm Today!', {
+                        body: 'Either North Bay buses cancelled or your bus #' + busNumber + ' is cancelled',
                         icon: '❄️',
-                        requireInteraction: true,
-                        silent: false
+                        requireInteraction: true
                     });
                 }
             } else {
-                // Normal day - ACTIVATE ALL ALARM METHODS!
-                console.log('Normal day - activating maximum alarm!');
-                updateStatus('🚨 MAXIMUM ALARM ACTIVATED!', 'normal');
-                document.getElementById('alarmReason').textContent = 'WAKE UP! All alarm methods active!';
+                // Normal day - RING THE ALARM!
+                console.log('Normal conditions - starting alarm');
+                updateStatus('🚨 ALARM RINGING! Wake up!', 'normal');
+                document.getElementById('alarmReason').textContent = 'Wake up! Buses are running normally.';
                 document.getElementById('alarmControls').classList.remove('hidden');
                 document.body.className = 'alarm-active';
-                document.title = '🚨 MAX ALARM!';
+                document.title = '🚨 ALARM!';
                 
-                // Method 1: Web Audio API
+                // Start continuous alarm
                 keepRinging = true;
                 playAlarmSound();
                 
-                // Method 2: HTML5 audio (multiple instances)
-                playMultipleAudios();
-                
-                // Method 3: Vibration (if available)
-                if ('vibrate' in navigator) {
-                    navigator.vibrate([1000, 500, 1000, 500, 1000]);
-                }
-                
-                // Method 4: Multiple notifications
+                // Show notification
                 if ('Notification' in window && Notification.permission === 'granted') {
-                    // Send multiple notifications
-                    for (let i = 0; i < 3; i++) {
-                        setTimeout(() => {
-                            new Notification('🚨 WAKE UP!', {
-                                body: 'Time to wake up! All alarm methods active!',
-                                icon: '⏰',
-                                requireInteraction: true,
-                                silent: false
-                            });
-                        }, i * 1000);
-                    }
+                    new Notification('🚨 Wake Up!', {
+                        body: 'Time to wake up! Buses are running.',
+                        icon: '⏰',
+                        requireInteraction: true
+                    });
                 }
-                
-                // Method 5: Flash screen
-                flashScreen();
-                
-                // Method 6: Try to wake screen
-                attemptScreenWake();
             }
         }
 
         function playAlarmSound() {
             if (!keepRinging) return;
             
-            console.log('Playing alarm sound with Web Audio API');
-            
-            // Use Web Audio API for maximum compatibility
+            // Use Web Audio API for better control
             if (audioContext) {
-                // Create multiple oscillators for louder sound
-                for (let i = 0; i < 3; i++) {
-                    setTimeout(() => {
-                        if (!keepRinging) return;
-                        
-                        const osc = audioContext.createOscillator();
-                        const gainNode = audioContext.createGain();
-                        osc.connect(gainNode);
-                        gainNode.connect(audioContext.destination);
-                        
-                        osc.frequency.value = 800 + (i * 100); // Slightly different frequencies
-                        osc.type = 'square';
-                        gainNode.gain.value = 0.4;
-                        
-                        // Create alarm pattern
-                        let time = 0;
-                        const pattern = setInterval(() => {
-                            if (!keepRinging) {
-                                clearInterval(pattern);
-                                return;
-                            }
-                            const freq = 800 + Math.sin(time * 2) * 300 + (i * 50);
-                            osc.frequency.setValueAtTime(freq, audioContext.currentTime);
-                            time += 0.1;
-                        }, 50);
-                        
-                        osc.start();
-                        
-                        // Stop after 2 seconds, restart if needed
-                        setTimeout(() => {
-                            clearInterval(pattern);
-                            osc.stop();
-                            if (keepRinging && i === 2) { // Restart with first oscillator
-                                setTimeout(playAlarmSound, 500);
-                            }
-                        }, 2000);
-                    }, i * 200);
-                }
-            }
-        }
-
-        function playMultipleAudios() {
-            // Play multiple HTML5 audio instances
-            const alarmAudio = document.getElementById('alarmSound');
-            
-            // Start playing
-            alarmAudio.play().catch(e => console.log('Primary audio failed:', e));
-            
-            // Create additional audio instances
-            for (let i = 0; i < 3; i++) {
-                setTimeout(() => {
-                    if (!keepRinging) return;
-                    
-                    // Create new audio element
-                    const newAudio = new Audio(alarmAudio.src);
-                    newAudio.loop = true;
-                    newAudio.volume = 1.0;
-                    newAudio.play().catch(e => console.log('Additional audio failed:', e));
-                    
-                    // Stop after 2 seconds
-                    setTimeout(() => {
-                        newAudio.pause();
-                        newAudio = null;
-                    }, 2000);
-                }, i * 300);
-            }
-        }
-
-        function flashScreen() {
-            let flashCount = 0;
-            const flash = setInterval(() => {
-                if (!keepRinging || flashCount > 20) {
-                    clearInterval(flash);
-                    document.body.style.background = '';
-                    return;
-                }
+                oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
                 
-                document.body.style.background = flashCount % 2 === 0 ? 
-                    'linear-gradient(45deg, #ff0000, #ff6600)' : 
-                    'linear-gradient(45deg, #ff6600, #ffff00)';
-                flashCount++;
-            }, 250);
-        }
-
-        function attemptScreenWake() {
-            // Try various methods to wake the screen
-            if ('wakeLock' in navigator && wakeLock) {
-                wakeLock.request('screen').then(() => {
-                    console.log('Screen wake attempted');
-                }).catch(e => console.log('Screen wake failed:', e));
-            }
-            
-            // Try to trigger screen wake with fake events
-            const events = ['touchstart', 'touchend', 'mousemove', 'click'];
-            events.forEach(event => {
-                window.dispatchEvent(new Event(event));
-            });
-            
-            // Try to change page visibility
-            if (document.hidden) {
-                window.focus();
+                oscillator.frequency.value = 800;
+                oscillator.type = 'square';
+                gainNode.gain.value = 0.3;
+                
+                // Create alarm pattern
+                let time = 0;
+                const pattern = setInterval(() => {
+                    if (!keepRinging) {
+                        clearInterval(pattern);
+                        return;
+                    }
+                    oscillator.frequency.setValueAtTime(800 + Math.sin(time) * 200, audioContext.currentTime);
+                    time += 0.1;
+                }, 100);
+                
+                oscillator.start();
+                
+                // Stop after 2 seconds, restart if needed
+                setTimeout(() => {
+                    clearInterval(pattern);
+                    if (oscillator) {
+                        oscillator.stop();
+                        oscillator = null;
+                    }
+                    if (keepRinging) playAlarmSound();
+                }, 2000);
+            } else {
+                // Fallback to HTML5 audio
+                const alarmAudio = document.getElementById('alarmSound');
+                alarmAudio.play().catch(e => console.log('Audio play failed:', e));
+                
+                setTimeout(() => {
+                    if (keepRinging) playAlarmSound();
+                }, 2000);
             }
         }
 
@@ -548,7 +334,7 @@
                 osc.connect(gain);
                 gain.connect(audioContext.destination);
                 osc.frequency.value = 400;
-                gain.gain.value = 0.3;
+                gain.gain.value = 0.2;
                 osc.start();
                 gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 2);
                 osc.stop(audioContext.currentTime + 2);
@@ -556,40 +342,32 @@
         }
 
         function stopAlarm() {
-            console.log('Stopping all alarm methods');
             keepRinging = false;
             
-            // Stop Web Audio
             if (oscillator) {
                 oscillator.stop();
                 oscillator = null;
             }
             
-            // Stop all HTML5 audio
-            document.getElementById('alarmSound').pause();
-            document.getElementById('alarmSound').currentTime = 0;
-            
-            // Stop vibration
-            if ('vibrate' in navigator) {
-                navigator.vibrate(0);
-            }
+            const alarmAudio = document.getElementById('alarmSound');
+            alarmAudio.pause();
+            alarmAudio.currentTime = 0;
             
             document.getElementById('alarmControls').classList.add('hidden');
             document.body.className = '';
-            document.body.style.background = '';
-            updateStatus('All alarms stopped - good morning! 🌅', 'normal');
+            updateStatus('Alarm stopped - good morning! 🌅', 'normal');
             document.title = 'Snow Day Alarm';
             
             // Reset for next day
             setTimeout(() => {
                 if (alarmSet) {
-                    updateStatus('Alarm reset for tomorrow - all systems active', 'normal');
+                    updateStatus('Alarm reset for tomorrow', 'normal');
                 }
             }, 3000);
         }
 
         async function checkSnowDay() {
-            console.log('Performing comprehensive snow day check...');
+            console.log('Checking snow day status...');
             updateStatus('Checking snow day status...', 'checking');
             
             try {
@@ -600,113 +378,72 @@
                 const response = await fetch(proxyUrl + targetUrl);
                 const html = await response.text();
                 
-                isSnowDay = isValidSnowDay(html);
+                // Check for both system-wide and bus-specific cancellations
+                isSnowDay = checkCancellationConditions(html);
                 const now = new Date().toLocaleTimeString();
                 
                 if (isSnowDay) {
-                    updateStatus('❄️ SNOW DAY DETECTED! All alarms will be cancelled', 'snowday');
+                    updateStatus('❄️ SNOW DAY DETECTED! Alarm will be cancelled', 'snowday');
                     document.title = '❄️ Snow Day!';
                 } else {
-                    updateStatus('🚌 Buses running normally - all alarms ready', 'normal');
+                    updateStatus('🚌 Buses running normally - alarm will ring', 'normal');
                     document.title = 'Snow Day Alarm';
                 }
                 
                 document.getElementById('lastCheck').textContent = `Last check: ${now}`;
                 
             } catch (error) {
-                console.error('Comprehensive check failed:', error);
-                updateStatus('❌ Check failed - all alarms ready as backup', 'normal');
+                console.error('Check failed:', error);
+                updateStatus('❌ Check failed - alarm will ring as backup', 'normal');
                 isSnowDay = false; // Default to normal day if check fails
             }
         }
 
-        function isValidSnowDay(html) {
+        function checkCancellationConditions(html) {
             const text = html.toLowerCase();
-            // Comprehensive checking
-            return (text.includes('north bay') && 
-                   (text.contains('all buses cancelled') || 
-                    text.contains('buses cancelled') || 
-                    text.contains('transportation cancelled'))) ||
+            
+            // Check 1: System-wide or North Bay cancellations
+            const systemCancelled = (text.includes('north bay') && 
+                   (text.includes('all buses cancelled') || 
+                    text.includes('buses cancelled') || 
+                    text.includes('transportation cancelled'))) ||
                    (text.includes('all zones') && text.includes('buses cancelled')) ||
                    (text.includes('system-wide') && text.includes('buses cancelled'));
+            
+            // Check 2: Specific bus number cancellation (if provided)
+            let busCancelled = false;
+            if (busNumber) {
+                // Look for exact bus number or "route" + bus number
+                const busPattern = new RegExp(`route\\s*${busNumber}|bus\\s*${busNumber}|${busNumber}`, 'i');
+                busCancelled = busPattern.test(text) && 
+                               (text.includes('cancelled') || text.includes('canceled'));
+            }
+            
+            return systemCancelled || busCancelled;
         }
 
         function manualCheck() {
             checkSnowDay();
         }
 
-        // Request all permissions
-        if ('Notification' in window) {
+        function initAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // Request notification permission
+        if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission();
         }
 
-        // Comprehensive monitoring
-        setInterval(checkSnowDay, 300000); // Every 5 minutes
+        // Auto-check every 5 minutes
+        setInterval(checkSnowDay, 300000);
         
-        // Ultra-frequent checks near alarm time
-        setInterval(() => {
-            if (!alarmSet) return;
-            
-            const now = new Date();
-            const currentTime = now.getHours().toString().padStart(2, '0') + ':' + 
-                              now.getMinutes().toString().padStart(2, '0');
-            
-            // Check every 10 seconds within 5 minutes of alarm
-            const [alarmHours, alarmMinutes] = alarmTime.split(':');
-            const alarmDate = new Date();
-            alarmDate.setHours(parseInt(alarmHours), parseInt(alarmMinutes), 0, 0);
-            
-            const timeDiff = Math.abs(alarmDate - now);
-            if (timeDiff < 5 * 60 * 1000) { // Within 5 minutes
-                console.log('Ultra-frequent check - near alarm time');
-                checkSnowDay();
-            }
-        }, 10000); // Every 10 seconds!
-
+        // Check immediately on load
         window.onload = function() {
             checkSnowDay();
-            
-            // iOS specific optimizations
-            if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
-                document.getElementById('warningBox').innerHTML = 
-                    '📱 iOS DETECTED: Add to Home Screen IMMEDIATELY • Keep Safari open • Keep phone plugged in • Disable auto-lock • Keep volume at maximum';
-            }
-            
-            // Android optimizations
-            if (/Android/.test(navigator.userAgent)) {
-                document.getElementById('warningBox').innerHTML = 
-                    '📱 ANDROID DETECTED: Keep Chrome open • Disable battery saver • Allow background audio • Keep volume up • Keep screen on if possible';
-            }
         };
-
-        // Handle every possible event
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        document.addEventListener('resume', handleResume);
-        document.addEventListener('focus', handleFocus);
-        window.addEventListener('focus', handleFocus);
-        
-        function handleVisibilityChange() {
-            console.log('Visibility changed:', document.hidden ? 'hidden' : 'visible');
-            if (document.hidden && alarmSet) {
-                console.log('Page hidden - attempting to maintain functionality');
-                keepAudioAlive();
-            }
-        }
-        
-        function handleResume() {
-            console.log('Page resumed');
-            if (alarmSet) {
-                keepAudioAlive();
-                checkSnowDay();
-            }
-        }
-        
-        function handleFocus() {
-            console.log('Page focused');
-            if (alarmSet) {
-                keepAudioAlive();
-            }
-        }
     </script>
 </body>
 </html>
