@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>North Bay Snow Day Alarm</title>
+    <title>North Bay Snow Day Alarm - FIXED Bus Scanner</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <style>
         body {
@@ -49,6 +49,8 @@
             font-weight: bold;
         }
         button:hover { transform: scale(1.05); }
+        button:active { transform: scale(0.95); }
+        button:disabled { background: #666; cursor: not-allowed; }
         button.cancel { background: #f44336; }
         .status {
             margin-top: 20px;
@@ -63,6 +65,7 @@
         .status.snowday { background: rgba(255,0,0,0.3); }
         .status.normal { background: rgba(0,255,0,0.3); }
         .status.checking { background: rgba(255,255,255,0.2); }
+        .status.delayed { background: rgba(255,165,0,0.3); }
         .alarm-controls {
             background: rgba(255,0,0,0.3);
             padding: 20px;
@@ -72,12 +75,11 @@
         }
         .alarm-active {
             background: linear-gradient(45deg, #ff0000, #ff6600) !important;
-            animation: pulse 1s infinite;
+            animation: emergency 0.5s infinite;
         }
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.7; }
-            100% { opacity: 1; }
+        @keyframes emergency {
+            0%, 100% { background: linear-gradient(45deg, #ff0000, #ff6600); }
+            50% { background: linear-gradient(45deg, #ff6600, #ffff00); }
         }
         .hidden { display: none; }
         .last-check { font-size: 12px; opacity: 0.7; margin-top: 10px; }
@@ -114,12 +116,42 @@
         }
         .result-snowday { background: rgba(255,0,0,0.3); border: 1px solid #ff4444; }
         .result-normal { background: rgba(0,255,0,0.3); border: 1px solid #44ff44; }
+        .result-delayed { background: rgba(255,165,0,0.3); border: 1px solid #ffa500; }
+        .bus-status {
+            font-size: 12px;
+            margin-top: 5px;
+            opacity: 0.8;
+        }
+        .scan-details {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 10px;
+            font-family: monospace;
+            background: rgba(0,0,0,0.2);
+            padding: 8px;
+            border-radius: 5px;
+            max-height: 150px;
+            overflow-y: auto;
+            text-align: left;
+        }
+        .raw-data {
+            font-size: 10px;
+            opacity: 0.5;
+            margin-top: 5px;
+            font-family: monospace;
+            background: rgba(0,0,0,0.1);
+            padding: 5px;
+            border-radius: 3px;
+            max-height: 80px;
+            overflow-y: auto;
+            text-align: left;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🌨️ North Bay Snow Day Alarm</h1>
-        <div class="subtitle">Alarm won't ring if it's a snow day or your bus is cancelled</div>
+        <div class="subtitle">SCANS ACTUAL geoquery.npssts.ca/Alerts for YOUR bus!</div>
         
         <div>
             <label for="alarmTime">Set Alarm Time:</label><br>
@@ -127,8 +159,8 @@
         </div>
         
         <div class="bus-number-section">
-            <label for="busNumber">Your Bus Number (optional):</label><br>
-            <input type="text" id="busNumber" class="bus-input" placeholder="e.g., 123 or leave blank">
+            <label for="busNumber">Your Bus Number:</label><br>
+            <input type="text" id="busNumber" class="bus-input" placeholder="e.g., 065">
             <div class="bus-number-display" id="busNumberDisplay"></div>
         </div>
         
@@ -151,7 +183,7 @@
         <div id="lastCheck" class="last-check"></div>
         
         <div class="warning-box">
-            ⚠️ Keep this page open overnight • Keep phone plugged in • Keep volume up
+            ⚠️ Keep this page open overnight • Keep phone plugged in • Keep volume up • Scans REAL geoquery.npssts.ca/Alerts
         </div>
         
         <!-- Audio elements -->
@@ -174,6 +206,7 @@
         let audioContext = null;
         let oscillator = null;
         let keepRinging = false;
+        let lastScanResults = [];
 
         function toggleAlarm() {
             if (!audioContext) initAudio();
@@ -194,13 +227,13 @@
                 // Update bus number display
                 const busDisplay = document.getElementById('busNumberDisplay');
                 if (busNumber) {
-                    busDisplay.textContent = `Monitoring bus #${busNumber} and North Bay cancellations`;
+                    busDisplay.textContent = `Scanning geoquery.npssts.ca/Alerts for bus #${busNumber}`;
                 } else {
-                    busDisplay.textContent = 'Monitoring North Bay system-wide cancellations';
+                    busDisplay.textContent = 'Scanning geoquery.npssts.ca/Alerts for all alerts';
                 }
                 
                 scheduleAlarm();
-                updateStatus('Alarm set for ' + alarmTime + ' - checking for snow day...', 'normal');
+                updateStatus('Alarm set for ' + alarmTime + ' - scanning geoquery.npssts.ca/Alerts...', 'normal');
             } else {
                 button.textContent = 'Set Alarm';
                 button.className = '';
@@ -222,26 +255,26 @@
                                   now.getMinutes().toString().padStart(2, '0');
                 
                 if (currentTime === alarmTime) {
-                    console.log('Alarm time reached - checking conditions...');
+                    console.log('Alarm time reached - scanning geoquery.npssts.ca/Alerts...');
                     triggerAlarm();
                 }
             }, 60000);
             
-            // Initial check
+            // Initial scan
             checkSnowDay();
         }
 
         async function triggerAlarm() {
-            console.log('Triggering alarm check...');
-            updateStatus('Checking conditions before alarm...', 'checking');
+            console.log('Triggering alarm - scanning geoquery.npssts.ca/Alerts...');
+            updateStatus('Scanning geoquery.npssts.ca/Alerts before alarm...', 'checking');
             
-            // Check snow day first
+            // Scan the actual alerts page
             await checkSnowDay();
             
             if (isSnowDay) {
-                // Snow day - gentle notification, no alarm
-                console.log('Conditions met for cancellation - not ringing alarm');
-                updateStatus('❄️ CONDITIONS MET! Alarm not ringing', 'snowday');
+                // Cancellations found - no alarm
+                console.log('Cancellations found on geoquery.npssts.ca/Alerts - not ringing alarm');
+                updateStatus('❄️ CANCELLATIONS FOUND! Alarm not ringing', 'snowday');
                 document.title = '❄️ No Alarm!';
                 playCancelledSound();
                 document.body.className = 'normal';
@@ -249,16 +282,16 @@
                 // Show notification but don't ring
                 if ('Notification' in window && Notification.permission === 'granted') {
                     new Notification('❄️ No Alarm Today!', {
-                        body: 'Either North Bay buses cancelled or your bus #' + busNumber + ' is cancelled',
+                        body: 'Found cancellations on geoquery.npssts.ca/Alerts',
                         icon: '❄️',
                         requireInteraction: true
                     });
                 }
             } else {
-                // Normal day - RING THE ALARM!
-                console.log('Normal conditions - starting alarm');
-                updateStatus('🚨 ALARM RINGING! Wake up!', 'normal');
-                document.getElementById('alarmReason').textContent = 'Wake up! Buses are running normally.';
+                // No cancellations - RING THE ALARM!
+                console.log('No cancellations found on geoquery.npssts.ca/Alerts - starting alarm');
+                updateStatus('🚨 NO CANCELLATIONS! Starting alarm', 'normal');
+                document.getElementById('alarmReason').textContent = 'Wake up! No cancellations found.';
                 document.getElementById('alarmControls').classList.remove('hidden');
                 document.body.className = 'alarm-active';
                 document.title = '🚨 ALARM!';
@@ -270,7 +303,7 @@
                 // Show notification
                 if ('Notification' in window && Notification.permission === 'granted') {
                     new Notification('🚨 Wake Up!', {
-                        body: 'Time to wake up! Buses are running.',
+                        body: 'No cancellations found on geoquery.npssts.ca/Alerts',
                         icon: '⏰',
                         requireInteraction: true
                     });
@@ -363,108 +396,396 @@
             // Reset for next day
             setTimeout(() => {
                 if (alarmSet) {
-                    updateStatus('Alarm reset for tomorrow', 'normal');
+                    updateStatus('Alarm reset for tomorrow - scanning geoquery.npssts.ca/Alerts...', 'normal');
                 }
             }, 3000);
         }
 
         async function manualCheck() {
-            console.log('Manual check initiated...');
-            updateStatus('Checking snow day status...', 'checking');
+            console.log('Manual scan of geoquery.npssts.ca/Alerts initiated...');
+            
+            // Disable button during scan
+            const checkButton = document.querySelector('.manual-check');
+            checkButton.disabled = true;
+            checkButton.textContent = 'Scanning...';
+            
+            updateStatus('Scanning geoquery.npssts.ca/Alerts...', 'checking');
             
             try {
-                // Use CORS proxy
+                // SCAN THE ACTUAL geoquery.npssts.ca/Alerts page
                 const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
-                const targetUrl = 'https://npssts.ca/index.php/delays-cancellations';
+                const targetUrl = 'https://geoquery.npssts.ca/Alerts';
+                
+                console.log('Manual scan:', targetUrl);
+                console.log('Looking for bus number:', busNumber || 'system-wide');
                 
                 const response = await fetch(proxyUrl + targetUrl);
                 const html = await response.text();
                 
-                // Check cancellation conditions
-                const isCancelled = checkCancellationConditions(html);
-                const now = new Date().toLocaleTimeString();
+                console.log('Website scanned, content length:', html.length);
+                console.log('First 500 characters:', html.substring(0, 500));
                 
-                // Create detailed result display
+                // Deep scan of the actual alerts page
+                const scanResults = deepScanAlertsPage(html);
+                lastScanResults = scanResults;
+                
+                console.log('Scan results:', scanResults);
+                
+                // Re-enable button
+                checkButton.disabled = false;
+                checkButton.textContent = 'Check Snow Day Status Now';
+                
+                // Process results
+                const now = new Date().toLocaleTimeString();
                 let resultHTML = '';
-                if (isCancelled) {
+                let statusType = 'normal';
+                let statusMessage = '';
+                
+                if (scanResults.cancellations.length > 0) {
+                    // Found cancellations!
+                    statusType = 'snowday';
+                    statusMessage = '❄️ CANCELLATIONS FOUND!';
+                    
                     resultHTML = `
                         <div class="result-box result-snowday">
-                            <strong>❄️ SNOW DAY DETECTED!</strong><br>
-                            ${busNumber ? `Your bus #${busNumber} is cancelled OR ` : ''}
-                            North Bay buses are cancelled.<br>
-                            <strong>Your alarm will NOT ring.</strong>
-                        </div>
+                            <strong>❄️ CANCELLATIONS FOUND!</strong><br>
+                            Found ${scanResults.cancellations.length} cancellation(s) on geoquery.npssts.ca/Alerts<br>
+                `;
+                    
+                    // Check if user's bus is affected
+                    if (busNumber && scanResults.cancellations.some(c => c.includes(busNumber))) {
+                        resultHTML += `<strong>Your bus #${busNumber} is CANCELLED!</strong><br>`;
+                    } else if (busNumber) {
+                        resultHTML += `<strong>Your bus #${busNumber} was NOT found in cancellations</strong><br>`;
+                    }
+                    
+                    resultHTML += `<strong>Your alarm will NOT ring.</strong>`;
+                    resultHTML += `</div>`;
+                    
+                } else if (scanResults.delays.length > 0) {
+                    // Found delays (but buses still running)
+                    statusType = 'delayed';
+                    statusMessage = '⏰ DELAYS FOUND - BUSES RUNNING';
+                    
+                    resultHTML = `
+                        <div class="result-box result-delayed">
+                            <strong>⏰ DELAYS FOUND!</strong><br>
+                            Found ${scanResults.delays.length} delay(s) on geoquery.npssts.ca/Alerts<br>
                     `;
-                    updateStatus('❄️ SNOW DAY DETECTED!', 'snowday');
+                    
+                    if (busNumber && scanResults.delays.some(d => d.includes(busNumber))) {
+                        resultHTML += `<strong>Your bus #${busNumber} is DELAYED but running!</strong><br>`;
+                    }
+                    
+                    resultHTML += `<strong>Your alarm WILL ring (delayed buses still run).</strong>`;
+                    resultHTML += `</div>`;
+                    
                 } else {
+                    // No cancellations or delays found
+                    statusType = 'normal';
+                    statusMessage = '🚌 NO CANCELLATIONS OR DELAYS FOUND!';
+                    
                     resultHTML = `
                         <div class="result-box result-normal">
-                            <strong>🚌 BUSES RUNNING!</strong><br>
-                            ${busNumber ? `Your bus #${busNumber} is running and ` : ''}
-                            North Bay system is normal.<br>
-                            <strong>Your alarm WILL ring.</strong>
-                        </div>
+                            <strong>🚌 NO CANCELLATIONS OR DELAYS!</strong><br>
+                            Scanned geoquery.npssts.ca/Alerts - no cancellations or delays found<br>
                     `;
-                    updateStatus('🚌 Buses running normally', 'normal');
+                    
+                    if (busNumber) {
+                        resultHTML += `<strong>Your bus #${busNumber} was not found in any alerts</strong><br>`;
+                    }
+                    
+                    resultHTML += `<strong>Your alarm WILL ring.</strong>`;
+                    resultHTML += `</div>`;
                 }
+                
+                // Add scan details for transparency
+                resultHTML += `
+                    <div class="scan-details">
+                        <strong>Scan Details:</strong><br>
+                        Total alerts scanned: ${scanResults.totalAlerts}<br>
+                        Cancellations found: ${scanResults.cancellations.length}<br>
+                        Delays found: ${scanResults.delays.length}
+                    </div>
+                `;
+                
+                // Update status
+                updateStatus(statusMessage, statusType);
                 
                 // Add result to status area
                 const statusDiv = document.getElementById('status');
-                statusDiv.innerHTML = resultHTML + `<div class="last-check">Last check: ${now}</div>`;
+                statusDiv.innerHTML = resultHTML + `<div class="last-check">Last scan: ${now}</div>`;
                 
                 // Also update title
-                document.title = isCancelled ? '❄️ Snow Day!' : 'Snow Day Alarm';
+                document.title = statusMessage;
                 
             } catch (error) {
-                console.error('Manual check failed:', error);
-                updateStatus('❌ Check failed - assuming normal conditions', 'normal');
+                console.error('Manual scan failed:', error);
+                
+                // Re-enable button
+                const checkButton = document.querySelector('.manual-check');
+                checkButton.disabled = false;
+                checkButton.textContent = 'Check Snow Day Status Now';
+                
+                updateStatus('❌ Scan failed - assuming normal conditions', 'normal');
                 
                 // Show error result
                 const statusDiv = document.getElementById('status');
                 statusDiv.innerHTML = `
                     <div class="result-box result-normal">
-                        <strong>❌ Check Failed</strong><br>
-                        Could not reach website - assuming normal conditions.<br>
+                        <strong>❌ Scan Failed</strong><br>
+                        Could not scan geoquery.npssts.ca/Alerts<br>
+                        Error: ${error.message}<br>
                         <strong>Your alarm WILL ring as backup.</strong>
                     </div>
-                    <div class="last-check">Last check: ${new Date().toLocaleTimeString()}</div>
+                    <div class="last-check">Last scan: ${new Date().toLocaleTimeString()}</div>
                 `;
             }
         }
 
-        function checkCancellationConditions(html) {
+        function deepScanAlertsPage(html) {
+            console.log('Starting deep scan of geoquery.npssts.ca/Alerts...');
+            
+            const results = {
+                cancellations: [],
+                delays: [],
+                totalAlerts: 0,
+                rawText: html.substring(0, 1000) // First 1000 chars for debugging
+            };
+            
+            // Convert to lowercase for searching
             const text = html.toLowerCase();
             
-            // Check 1: System-wide or North Bay cancellations
-            const systemCancelled = (text.includes('north bay') && 
-                   (text.includes('all buses cancelled') || 
-                    text.includes('buses cancelled') || 
-                    text.includes('transportation cancelled'))) ||
-                   (text.includes('all zones') && text.includes('buses cancelled')) ||
-                   (text.includes('system-wide') && text.includes('buses cancelled'));
+            console.log('Text length:', text.length);
+            console.log('First 500 chars:', text.substring(0, 500));
             
-            // Check 2: Specific bus number cancellation (if provided)
-            let busCancelled = false;
-            if (busNumber) {
-                // Look for exact bus number or "route" + bus number
-                const busPattern = new RegExp(`route\\s*${busNumber}|bus\\s*${busNumber}|${busNumber}`, 'i');
-                busCancelled = busPattern.test(text) && 
-                               (text.includes('cancelled') || text.includes('canceled'));
-            }
+            // Look for bus numbers and statuses - more comprehensive pattern
+            const lines = html.split(/[\n\r]/);
             
-            return systemCancelled || busCancelled;
+            console.log('Scanning', lines.length, 'lines of text');
+            
+            lines.forEach((line, index) => {
+                const lowerLine = line.toLowerCase();
+                
+                // Look for bus numbers (2-4 digits) followed by status
+                const busMatches = line.match(/\b(\d{2,4})\b/g);
+                if (busMatches) {
+                    results.totalAlerts++;
+                    
+                    busMatches.forEach(busMatch => {
+                        const busNum = busMatch;
+                        
+                        // Check if this line contains status indicators
+                        if (lowerLine.includes('cancelled') || lowerLine.includes('canceled')) {
+                            results.cancellations.push(`Bus ${busNum}: CANCELLED (line ${index + 1})`);
+                            console.log(`Found cancellation: Bus ${busNum}`);
+                        }
+                        else if (lowerLine.includes('delayed') || lowerLine.includes('delay')) {
+                            results.delays.push(`Bus ${busNum}: DELAYED (line ${index + 1})`);
+                            console.log(`Found delay: Bus ${busNum}`);
+                        }
+                        else if (lowerLine.includes('running') || lowerLine.includes('normal')) {
+                            console.log(`Bus ${busNum}: RUNNING (line ${index + 1})`);
+                        }
+                    });
+                }
+                
+                // Also look for general cancellation announcements
+                if (lowerLine.includes('all buses cancelled') || 
+                    lowerLine.includes('buses cancelled') ||
+                    lowerLine.includes('system cancelled') ||
+                    lowerLine.includes('all zones cancelled')) {
+                    results.cancellations.push(`System-wide: CANCELLED (line ${index + 1})`);
+                    console.log('Found system-wide cancellation');
+                }
+            });
+            
+            console.log('Deep scan complete:', results);
+            return results;
         }
 
-        function updateStatus(message, type) {
-            const status = document.getElementById('status');
-            status.className = 'status ' + type;
-            status.innerHTML = message + '<div class="last-check" id="lastCheck"></div>';
+        function stopAlarm() {
+            keepRinging = false;
+            
+            if (oscillator) {
+                oscillator.stop();
+                oscillator = null;
+            }
+            
+            const alarmAudio = document.getElementById('alarmSound');
+            alarmAudio.pause();
+            alarmAudio.currentTime = 0;
+            
+            document.getElementById('alarmControls').classList.add('hidden');
+            document.body.className = '';
+            updateStatus('Alarm stopped - good morning! 🌅', 'normal');
+            document.title = 'Snow Day Alarm';
+            
+            // Reset for next day
+            setTimeout(() => {
+                if (alarmSet) {
+                    updateStatus('Alarm reset for tomorrow - scanning geoquery.npssts.ca/Alerts...', 'normal');
+                }
+            }, 3000);
+        }
+
+        async function checkSnowDay() {
+            console.log('Automatic scan of geoquery.npssts.ca/Alerts...');
+            updateStatus('Scanning geoquery.npssts.ca/Alerts...', 'checking');
+            
+            try {
+                // SCAN THE ACTUAL geoquery.npssts.ca/Alerts page
+                const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+                const targetUrl = 'https://geoquery.npssts.ca/Alerts';
+                
+                console.log('Automatic scan:', targetUrl);
+                const response = await fetch(proxyUrl + targetUrl);
+                const html = await response.text();
+                
+                console.log('Automatic scan completed, content length:', html.length);
+                
+                // Deep scan of the actual alerts page
+                const scanResults = deepScanAlertsPage(html);
+                lastScanResults = scanResults;
+                
+                const now = new Date().toLocaleTimeString();
+                let statusType = 'normal';
+                let statusMessage = '';
+                
+                if (scanResults.cancellations.length > 0) {
+                    // Found cancellations!
+                    statusType = 'snowday';
+                    statusMessage = '❄️ CANCELLATIONS FOUND!';
+                    isSnowDay = true;
+                } else if (scanResults.delays.length > 0) {
+                    // Found delays (but buses still running)
+                    statusType = 'delayed';
+                    statusMessage = '⏰ DELAYS FOUND - BUSES RUNNING';
+                    isSnowDay = false; // Delays don't cancel alarm
+                } else {
+                    // No cancellations or delays found
+                    statusType = 'normal';
+                    statusMessage = '🚌 NO CANCELLATIONS OR DELAYS FOUND!';
+                    isSnowDay = false;
+                }
+                
+                // Check if user's specific bus is affected
+                if (busNumber && scanResults.cancellations.some(c => c.includes(busNumber))) {
+                    statusMessage += ` (Your bus #${busNumber} CANCELLED!)`;
+                } else if (busNumber && scanResults.delays.some(d => d.includes(busNumber))) {
+                    statusMessage += ` (Your bus #${busNumber} DELAYED!)`;
+                } else if (busNumber) {
+                    statusMessage += ` (Your bus #${busNumber} not found in alerts)`;
+                }
+                
+                // Update status
+                updateStatus(statusMessage, statusType);
+                
+                // Add scan details
+                const statusDiv = document.getElementById('status');
+                statusDiv.innerHTML = `
+                    <div class="result-box result-${statusType}">
+                        <strong>${statusMessage}</strong><br>
+                        Found ${scanResults.cancellations.length} cancellation(s) and ${scanResults.delays.length} delay(s)
+                    </div>
+                    <div class="scan-details">
+                        <strong>Scan Details:</strong><br>
+                        Total alerts scanned: ${scanResults.totalAlerts}<br>
+                        Cancellations: ${scanResults.cancellations.length}<br>
+                        Delays: ${scanResults.delays.length}
+                    </div>
+                    <div class="last-check">Last scan: ${now}</div>
+                `;
+                
+                // Also update title
+                document.title = statusMessage;
+                
+            } catch (error) {
+                console.error('Automatic scan failed:', error);
+                updateStatus('❌ Scan failed - assuming normal conditions', 'normal');
+                isSnowDay = false; // Default to normal day if scan fails
+                
+                const statusDiv = document.getElementById('status');
+                statusDiv.innerHTML = `
+                    <div class="result-box result-normal">
+                        <strong>❌ Automatic Scan Failed</strong><br>
+                        Could not scan geoquery.npssts.ca/Alerts<br>
+                        <strong>Assuming normal conditions - alarm will ring.</strong>
+                    </div>
+                    <div class="last-check">Last scan: ${new Date().toLocaleTimeString()}</div>
+                `;
+            }
+        }
+
+        function checkGeoQueryCancellations(html) {
+            const text = html.toLowerCase();
+            
+            console.log('Checking geoquery.npssts.ca/Alerts for cancellations...');
+            
+            // Look for various cancellation indicators
+            const cancellationIndicators = [
+                'cancelled', 'canceled', 'cancellation', 'no buses',
+                'all buses cancelled', 'buses cancelled', 'transportation cancelled',
+                'system cancelled', 'route cancelled', 'north bay cancelled',
+                'all zones cancelled', 'all areas cancelled'
+            ];
+            
+            // Check for specific bus number if provided
+            let busSpecificCancelled = false;
+            if (busNumber) {
+                // Look for exact bus number in the text
+                const busPattern = new RegExp(`\\b${busNumber}\\b`, 'i');
+                busSpecificCancelled = busPattern.test(text) && 
+                                      cancellationIndicators.some(indicator => text.includes(indicator));
+            }
+            
+            // Check for system-wide cancellations
+            const systemCancelled = 
+                (text.includes('north bay') && cancellationIndicators.some(indicator => text.includes(indicator))) ||
+                (text.includes('all zones') && cancellationIndicators.some(indicator => text.includes(indicator))) ||
+                (text.includes('all areas') && cancellationIndicators.some(indicator => text.includes(indicator))) ||
+                (text.includes('system') && cancellationIndicators.some(indicator => text.includes(indicator)));
+            
+            console.log('Cancellation check result:', { busSpecificCancelled, systemCancelled, busNumber });
+            
+            return busSpecificCancelled || systemCancelled;
+        }
+
+        function stopAlarm() {
+            keepRinging = false;
+            
+            if (oscillator) {
+                oscillator.stop();
+                oscillator = null;
+            }
+            
+            const alarmAudio = document.getElementById('alarmSound');
+            alarmAudio.pause();
+            alarmAudio.currentTime = 0;
+            
+            document.getElementById('alarmControls').classList.add('hidden');
+            document.body.className = '';
+            updateStatus('Alarm stopped - good morning! 🌅', 'normal');
+            document.title = 'Snow Day Alarm';
+            
+            // Reset for next day
+            setTimeout(() => {
+                if (alarmSet) {
+                    updateStatus('Alarm reset for tomorrow - scanning geoquery.npssts.ca/Alerts...', 'normal');
+                }
+            }, 3000);
         }
 
         function initAudio() {
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
+        }
+
+        function updateStatus(message, type) {
+            const status = document.getElementById('status');
+            status.className = 'status ' + type;
+            status.innerHTML = message + '<div class="last-check" id="lastCheck"></div>';
         }
 
         // Request notification permission
